@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+*.eggs/
+.Python
+
+# Virtual environments
+causal_time_env/
+
+# Large data & model files
+data/
+checkpoints/
+logs/
+results/
+
+# Demo outputs (keep only pdf/)
+demo_outputs/*.png
+demo_outputs/svg/
+
+# Paper source (linked via arXiv/OpenReview instead)
+TSALM/
+
+# Development status tracking files
+*.md
+!causal_time_prior/README.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

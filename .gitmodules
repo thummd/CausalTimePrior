@@ -1,0 +1,6 @@
+[submodule "TempoPFN"]
+	path = TempoPFN
+	url = git@github.com:automl/TempoPFN.git
+[submodule "Do-PFN-prior"]
+	path = Do-PFN-prior
+	url = git@github.com:oossen/Do-PFN-prior.git
