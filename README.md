@@ -2,7 +2,7 @@
 
 **Interventional Time Series Priors for Causal Foundation Models**
 
-TSALM Workshop at ICLR 2026 | [OpenReview](https://openreview.net/forum?id=TODO) <!-- | [arXiv](https://arxiv.org/abs/TODO) -->
+TSALM Workshop at ICLR 2026 | [OpenReview](https://openreview.net/forum?id=JbTgx2L9Z2) <!-- | [arXiv](https://arxiv.org/abs/TODO) -->
 
 CausalTimePrior is a framework for generating synthetic temporal structural causal models (SCMs) with paired observational and interventional time series. It addresses a critical gap in time series causal inference: existing benchmarks generate only observational data, lacking the interventional targets needed to train causal foundation models.
 
@@ -81,10 +81,13 @@ CausalTimePrior/
 ## Citation
 
 ```bibtex
-@inproceedings{causaltimeprior2026,
-  title={Interventional Time Series Priors for Causal Foundation Models},
-  booktitle={TSALM Workshop at ICLR},
-  year={2026}
+@inproceedings{
+thumm2026interventional,
+title={Interventional Time Series Priors for Causal Foundation Models},
+author={Dennis Thumm and Ying Chen},
+booktitle={1st ICLR Workshop on Time Series in the Age of Large Models},
+year={2026},
+url={https://openreview.net/forum?id=JbTgx2L9Z2}
 }
 ```
 
