@@ -16,6 +16,26 @@ from dopfnprior.utils.sampling import TorchDistributionSampler, ShiftedExponenti
 from dopfnprior.configs.default_config import Tanh, TanhX2, TanhReLU
 
 
+class Sin(nn.Module):
+    def forward(self, x):
+        return torch.sin(x)
+
+
+class Cos(nn.Module):
+    def forward(self, x):
+        return torch.cos(x)
+
+
+class Abs(nn.Module):
+    def forward(self, x):
+        return torch.abs(x)
+
+
+class Square(nn.Module):
+    def forward(self, x):
+        return torch.pow(x, 2)
+
+
 class CausalTimePrior:
     """
     Prior distribution over temporal SCMs with interventions.
@@ -61,10 +81,10 @@ class CausalTimePrior:
             TanhReLU(),            # tanh(relu(x))
             nn.ReLU(),             # relu
             # Additional nonlinear functions from the paper
-            self._create_sin(),    # sin
-            self._create_cos(),    # cos
-            self._create_abs(),    # abs
-            self._create_square(), # x^2
+            Sin(),                 # sin
+            Cos(),                 # cos
+            Abs(),                 # abs
+            Square(),              # x^2
         ]
         
         # Chain SCM builder
@@ -75,34 +95,6 @@ class CausalTimePrior:
         
         # Regime-switching SCM builder (will be instantiated per sample)
         # since it depends on sampled N
-    
-    def _create_sin(self):
-        """Create sin activation."""
-        class Sin(nn.Module):
-            def forward(self, x):
-                return torch.sin(x)
-        return Sin()
-    
-    def _create_cos(self):
-        """Create cos activation."""
-        class Cos(nn.Module):
-            def forward(self, x):
-                return torch.cos(x)
-        return Cos()
-    
-    def _create_abs(self):
-        """Create abs activation."""
-        class Abs(nn.Module):
-            def forward(self, x):
-                return torch.abs(x)
-        return Abs()
-    
-    def _create_square(self):
-        """Create square activation."""
-        class Square(nn.Module):
-            def forward(self, x):
-                return torch.pow(x, 2)
-        return Square()
     
     def sample_scm(self) -> TemporalSCM:
         """Sample a temporal SCM from the prior.

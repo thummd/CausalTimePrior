@@ -16,7 +16,7 @@ import torch.nn as nn
 import numpy as np
 import time
 
-from causal_time_prior.prior import CausalTimePrior
+from causal_time_prior.prior import CausalTimePrior, Sin, Cos, Square
 from causal_time_prior.temporal_scm_builder import TemporalSCMBuilder
 from dopfnprior.utils.sampling import ShiftedExponentialSampler
 
@@ -65,9 +65,9 @@ def generate_ood_test_set(
     
     # Create complex activation functions
     complex_activations = [
-        prior._create_sin(),
-        prior._create_cos(),
-        prior._create_square(),
+        Sin(),
+        Cos(),
+        Square(),
         prior.activations[3],  # TanhReLU
     ]
     

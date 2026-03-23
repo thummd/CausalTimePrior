@@ -7,6 +7,40 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+@dataclass
+class StepIntervention:
+    """Step function intervention profile (picklable replacement for lambda)."""
+    step_time: int
+    def __call__(self, t):
+        return 2.0 if t >= self.step_time else -2.0
+
+
+@dataclass
+class RampIntervention:
+    """Ramp intervention profile (picklable replacement for lambda)."""
+    start_time: int
+    intervention_length: int
+    def __call__(self, t):
+        return -2.0 + 4.0 * (t - self.start_time) / self.intervention_length
+
+
+@dataclass
+class SineIntervention:
+    """Sinusoidal intervention profile (picklable replacement for lambda)."""
+    start_time: int
+    freq: float
+    def __call__(self, t):
+        return 2.0 * np.sin(self.freq * (t - self.start_time))
+
+
+@dataclass
+class TrajectoryIntervention:
+    """Trajectory-based intervention profile (picklable replacement for lambda)."""
+    trajectory_dict: dict
+    def __call__(self, t):
+        return self.trajectory_dict.get(t, 0.0)
+
+
 class InterventionType(Enum):
     """Types of interventions."""
     HARD = "hard"           # do(X_i := c)
@@ -132,19 +166,19 @@ class InterventionSampler:
             
             if profile_type == 0:  # Step function
                 step_time = start_time + intervention_length // 2
-                values = lambda t: 2.0 if t >= step_time else -2.0
-                
+                values = StepIntervention(step_time)
+
             elif profile_type == 1:  # Ramp
-                values = lambda t: -2.0 + 4.0 * (t - start_time) / intervention_length
-                
+                values = RampIntervention(start_time, intervention_length)
+
             elif profile_type == 2:  # Sinusoidal
                 freq = 2 * np.pi / intervention_length
-                values = lambda t: 2.0 * np.sin(freq * (t - start_time))
-                
+                values = SineIntervention(start_time, freq)
+
             else:  # Sampled trajectory
                 trajectory = torch.randn(intervention_length, generator=self.generator) * 2.0
                 trajectory_dict = {start_time + i: trajectory[i].item() for i in range(intervention_length)}
-                values = lambda t: trajectory_dict.get(t, 0.0)
+                values = TrajectoryIntervention(trajectory_dict)
         
         return InterventionSpec(
             targets=targets,
