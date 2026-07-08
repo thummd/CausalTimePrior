@@ -93,4 +93,6 @@ url={https://openreview.net/forum?id=JbTgx2L9Z2}
 
 ## License
 
-This project builds on [Do-PFN-prior](https://github.com/oossen/Do-PFN-prior) and [TempoPFN](https://github.com/automl/TempoPFN). Please refer to their respective licenses.
+This project is licensed under the [Apache License 2.0](LICENSE).
+
+It builds on [Do-PFN-prior](https://github.com/oossen/Do-PFN-prior) and [TempoPFN](https://github.com/automl/TempoPFN), which are included as git submodules and retain their respective licenses.
