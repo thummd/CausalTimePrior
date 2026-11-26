@@ -31,6 +31,7 @@ import numpy as np
 import time
 
 from causal_time_prior.prior import CausalTimePrior, Sin, Cos, Square
+from causal_time_prior.data_checks import is_degenerate_pair
 from causal_time_prior.temporal_scm_builder import TemporalSCMBuilder
 from dopfnprior.utils.sampling import ShiftedExponentialSampler
 
@@ -141,8 +142,9 @@ def generate_ood_test_set(
             generator=prior.generator,
         )
         
-        # Skip if diverged
-        if torch.isnan(X_obs).any() or torch.isnan(X_int).any():
+        # A failed simulation comes back as an all-zero series, not as NaN, so the
+        # check has to look for both.
+        if is_degenerate_pair(X_obs, X_int):
             continue
         
         data.append((X_obs, X_int, intervention, scm))

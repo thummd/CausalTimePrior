@@ -117,7 +117,7 @@ def evaluate_shuffled(
     preds_shuffled, gts_shuffled = run_eval(shuffled_targets, "Shuffled")
 
     # Compute metrics by query type
-    query_types_np = query_types.numpy()
+    query_types_np = query_types.cpu().numpy()
     qtype_names = {0: 'Intervened', 1: 'Downstream', 2: 'Non-causal'}
 
     print("\n" + "=" * 80)

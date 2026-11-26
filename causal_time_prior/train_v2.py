@@ -24,6 +24,7 @@ from torch.utils.data import TensorDataset, DataLoader
 import time
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
+from causal_time_prior.data_checks import assert_target_distribution
 
 
 def train_epoch(model, dataloader, optimizer, device, normalize=True):
@@ -119,7 +120,30 @@ def main(
     device: str = "cpu",
     save_path: str = "checkpoints/simple_causal_pfn_v2.pt",
 ):
-    """Train SimpleCausalPFNV2 on downstream effects dataset."""
+    """Train SimpleCausalPFNV2 on a downstream-effects dataset.
+
+    Args:
+        data_path: Dataset written by ``generate_dataset_v2.py`` or
+            ``generate_dataset_threeway.py``.
+        hidden_dim: Width of the GRU and of the encoders. The model behind the
+            TSALM 2026 results used the default of 64.
+        num_layers: Number of GRU layers.
+        batch_size: Mini-batch size.
+        num_epochs: Number of passes over the training split.
+        lr: Learning rate of Adam.
+        train_split: Share of the data used for training. The rest is the
+            validation split that selects the saved checkpoint.
+        device: Torch device string, for example ``"cpu"`` or ``"cuda"``.
+        save_path: Destination of the checkpoint with the lowest validation RMSE.
+
+    Returns:
+        None. The best checkpoint is written to ``save_path``.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, a context without
+            variance, or an implausibly large normalised target. No optimisation step
+            is taken in that case.
+    """
     
     print("=" * 80)
     print("Training SimpleCausalPFNV2 on Downstream Effects")
@@ -165,6 +189,19 @@ def main(
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
     
     print(f"\n2. Train/test split: {n_train}/{n_samples - n_train}")
+
+    # Step zero: log and assert the target statistics before any optimisation step.
+    # Fixed seeds guard against variance between runs. They do not guard against
+    # systematically corrupted targets, and one zero-filled context is enough to
+    # dominate the loss because of the per-sample normalisation below.
+    assert_target_distribution(
+        X_obs[:n_train], X_int[:n_train], query_targets[:n_train], query_times[:n_train],
+        name="train split",
+    )
+    assert_target_distribution(
+        X_obs[n_train:], X_int[n_train:], query_targets[n_train:], query_times[n_train:],
+        name="validation split",
+    )
     
     # Create model
     print(f"\n3. Initializing SimpleCausalPFNV2...")
