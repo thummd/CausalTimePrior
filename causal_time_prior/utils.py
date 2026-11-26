@@ -14,12 +14,55 @@
 
 """Utility functions for CausalTimePrior."""
 
+from contextlib import contextmanager
+from typing import Iterator, Optional
+
 import torch
 import torch.distributions as dist
 import numpy as np
-from typing import Optional
 
 from dopfnprior.utils.sampling import DistributionSampler
+
+
+# ===== Random Streams =====
+
+@contextmanager
+def global_rng_stream(generator: Optional[torch.Generator]) -> Iterator[None]:
+    """Let code that draws from the global torch RNG continue the stream of ``generator``.
+
+    ``torch.distributions`` cannot take a generator, so every noise sampler in this
+    package draws from the global state. Inside this context the global state is
+    replaced by the state of ``generator``. On exit the advanced state is written back
+    to the generator and the previous global state is restored. The surrounding program
+    therefore sees no change to its own random stream.
+
+    One swap around many draws consumes the stream exactly like one swap per draw, as
+    long as nothing else touches the global RNG inside the context.
+
+    Args:
+        generator: Stream to continue. None leaves the global state in place, which
+            makes the context a no-op.
+
+    Returns:
+        A context manager that yields nothing.
+
+    Raises:
+        Nothing of its own. An exception raised inside the context propagates after
+        both random states have been restored.
+    """
+    if generator is None:
+        yield
+        return
+
+    saved_global_state = torch.get_rng_state()
+    torch.set_rng_state(generator.get_state())
+    try:
+        yield
+    finally:
+        # Write back before restoring, otherwise the generator would replay the
+        # same numbers on its next use.
+        generator.set_state(torch.get_rng_state())
+        torch.set_rng_state(saved_global_state)
 
 
 # ===== Stability Checks =====

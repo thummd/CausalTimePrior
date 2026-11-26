@@ -23,7 +23,7 @@ import numpy as np
 from causal_time_prior.temporal_graph import TemporalDAG
 from causal_time_prior.temporal_mechanism import TemporalMechanism
 from causal_time_prior.interventions import InterventionSpec, InterventionType
-from causal_time_prior.utils import clip_values, check_divergence
+from causal_time_prior.utils import clip_values, check_divergence, global_rng_stream
 from dopfnprior.utils.sampling import DistributionSampler
 
 
@@ -121,22 +121,35 @@ class TemporalSCM:
         burn_in: int = 50,
         intervention: Optional[InterventionSpec] = None,
         generator: Optional[torch.Generator] = None,
-        divergence_check_interval: int = 50,
     ) -> Optional[torch.Tensor]:
-        """Unified forward simulation, optionally with intervention.
+        """Run the forward simulation, optionally under an intervention.
 
-        Returns buffer[burn_in:] on success, or None on early divergence.
+        Every simulated value is clipped to [-1000, 1000] and the trajectory is kept,
+        so an explosive SCM saturates at the clip instead of being discarded. Noise is
+        drawn one value per variable and step, in simulation order, from the stream of
+        ``generator``. The results published at TSALM 2026 were generated with exactly
+        this behaviour. ``README.md`` describes how to check a regenerated dataset
+        against the released one.
+
+        Args:
+            total_T: Number of steps to simulate, burn-in included.
+            burn_in: Number of leading steps dropped from the returned series.
+                Intervention times are counted from the end of the burn-in.
+            intervention: Intervention to apply. None simulates the observational arm.
+            generator: Random stream for the noise. None draws from the global torch
+                state.
+
+        Returns:
+            Tensor of shape (total_T - burn_in, N), or None when the trajectory holds
+            NaN, Inf, or a magnitude above 1e6.
+
+        Raises:
+            Nothing of its own. A numerical failure is reported through the None
+            return value. An exception from a mechanism or a noise sampler propagates
+            after the global torch random state has been restored.
         """
         N = len(self._topo)
-        T = total_T - burn_in
         buffer = torch.zeros(total_T, N, device=self.device, dtype=self.dtype)
-
-        # Pre-sample all noise (eliminates per-step tensor creation + RNG state swaps)
-        all_noise = {}
-        for v in self._topo:
-            all_noise[v] = self.noise[v].distribution.sample((total_T,)).to(
-                device=self.device, dtype=self.dtype
-            )
 
         # Pre-compute intervention lookup set for O(1) checks
         int_targets = set()
@@ -149,55 +162,55 @@ class TemporalSCM:
             int_type = intervention.intervention_type
             int_values = intervention.values
 
-        # Forward simulation
-        for t in range(total_T):
-            # Early divergence detection
-            if (divergence_check_interval > 0
-                    and t > 0
-                    and t % divergence_check_interval == 0
-                    and buffer[t - 1].abs().max() > 500):
-                return None
+        # Why one draw per step inside a single stream swap: drawing all noise for a
+        # variable in one batch is faster, but it consumes the stream in a different
+        # order and so changes every dataset generated from a given seed. Why no
+        # early exit on large values: replacing a saturating trajectory by zeros
+        # changes the data distribution and yields contexts with zero variance,
+        # which the per-sample normalisation in the trainers cannot handle.
+        with global_rng_stream(generator):
+            for t in range(total_T):
+                for i, v in enumerate(self._topo):
+                    # Check intervention
+                    if intervention is not None and i in int_targets and (t - burn_in) in int_times:
+                        if int_type == InterventionType.HARD:
+                            buffer[t, i] = int_values
+                            continue
+                        elif int_type == InterventionType.TIME_VARYING:
+                            buffer[t, i] = int_values(t - burn_in)
+                            continue
+                        # SOFT: fall through to mechanism, add shift after
 
-            for i, v in enumerate(self._topo):
-                # Check intervention
-                if intervention is not None and i in int_targets and (t - burn_in) in int_times:
-                    if int_type == InterventionType.HARD:
-                        buffer[t, i] = int_values
-                        continue
-                    elif int_type == InterventionType.TIME_VARYING:
-                        buffer[t, i] = int_values(t - burn_in)
-                        continue
-                    # SOFT: fall through to mechanism, add shift after
+                    # Gather instantaneous parent values using pre-resolved indices
+                    parent_values_instant = {
+                        p: buffer[t, idx] for p, idx in self._instant_parent_pairs[i]
+                    }
 
-                # Gather instantaneous parent values using pre-resolved indices
-                parent_values_instant = {
-                    p: buffer[t, idx] for p, idx in self._instant_parent_pairs[i]
-                }
+                    # Gather lagged parent values
+                    parent_values_lagged = []
+                    for k, pairs_k in enumerate(self._lagged_parent_pairs[i]):
+                        if t >= k + 1:
+                            parent_values_lagged.append(
+                                {p: buffer[t - k - 1, idx] for p, idx in pairs_k}
+                            )
+                        else:
+                            parent_values_lagged.append({})
 
-                # Gather lagged parent values
-                parent_values_lagged = []
-                for k, pairs_k in enumerate(self._lagged_parent_pairs[i]):
-                    if t >= k + 1:
-                        parent_values_lagged.append(
-                            {p: buffer[t - k - 1, idx] for p, idx in pairs_k}
-                        )
-                    else:
-                        parent_values_lagged.append({})
+                    # Hard and time-varying interventions skip this draw on purpose.
+                    # The published stream never consumed noise for an overwritten value.
+                    eps = self.noise[v].sample_n(1).to(device=self.device, dtype=self.dtype)
 
-                # Noise (pre-sampled, already a tensor)
-                eps = all_noise[v][t].unsqueeze(0)
+                    # Apply mechanism
+                    value = self.mechanisms[v](parent_values_instant, parent_values_lagged, eps)
 
-                # Apply mechanism
-                value = self.mechanisms[v](parent_values_instant, parent_values_lagged, eps)
+                    # Soft intervention shift
+                    if (intervention is not None
+                            and int_type == InterventionType.SOFT
+                            and i in int_targets
+                            and (t - burn_in) in int_times):
+                        value = value + int_values
 
-                # Soft intervention shift
-                if (intervention is not None
-                        and int_type == InterventionType.SOFT
-                        and i in int_targets
-                        and (t - burn_in) in int_times):
-                    value = value + int_values
-
-                buffer[t, i] = clip_values(value)
+                    buffer[t, i] = clip_values(value)
 
         # Final divergence check
         if check_divergence(buffer):
@@ -228,6 +241,10 @@ class TemporalSCM:
         -------
         torch.Tensor
             Time series data of shape (T, N) where N is number of variables.
+            A failed simulation (NaN, Inf, or a magnitude above 1e6) is returned as
+            an all-zero tensor after a printed warning. It has the shape of valid
+            data, so reject it with ``data_checks.is_zero_filled`` or draw pairs
+            through ``data_checks.generate_checked_pair``.
         """
         result = self._simulate(T + burn_in, burn_in=burn_in, generator=generator)
         if result is None:
@@ -262,6 +279,8 @@ class TemporalSCM:
         -------
         torch.Tensor
             Time series data of shape (T, N) under intervention.
+            A failed simulation is returned as an all-zero tensor after a printed
+            warning, exactly as in ``sample_observational``.
         """
         result = self._simulate(
             T + burn_in, burn_in=burn_in, intervention=intervention, generator=generator,
