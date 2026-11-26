@@ -28,6 +28,7 @@ import torch
 import numpy as np
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
+from causal_time_prior.data_checks import assert_target_distribution
 
 
 def evaluate_with_nmse(
@@ -35,7 +36,21 @@ def evaluate_with_nmse(
     test_path: str,
     device: str = 'cpu',
 ):
-    """Evaluate model with NMSE alongside standard metrics."""
+    """Evaluate a checkpoint with NMSE alongside RMSE, MAE, and the Pred/GT ratio.
+
+    Args:
+        model_path: Checkpoint written by ``train_v2.py``.
+        test_path: Three-way test set written by ``generate_dataset_threeway.py``.
+        device: Torch device string. Metrics are computed on the CPU in every case.
+
+    Returns:
+        Tuple ``(results, overall)``. ``results`` maps each query type to its metrics.
+        ``overall`` holds the pooled NMSE, RMSE, and MAE.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series or contexts
+            without variance in the test set. No prediction is made in that case.
+    """
 
     print("=" * 80)
     print("NMSE Evaluation (Do-PFN-style)")
@@ -56,6 +71,10 @@ def evaluate_with_nmse(
 
     n_samples = X_obs.shape[0]
     print(f"   Test set size: {n_samples}")
+
+    # Step zero for evaluation. NMSE divides by the target variance, so zero-filled
+    # test series inflate it by orders of magnitude without any change in the model.
+    assert_target_distribution(X_obs, X_int, query_targets, query_times, name="test set")
 
     # Load model
     print(f"\n2. Loading model from {model_path}...")
@@ -109,7 +128,7 @@ def evaluate_with_nmse(
     ground_truths = np.array(ground_truths)
 
     # Compute metrics by query type
-    query_types_np = query_types.numpy()
+    query_types_np = query_types.cpu().numpy()
     qtype_names = {0: 'Intervened', 1: 'Downstream', 2: 'Non-causal'}
 
     print("\n" + "=" * 90)

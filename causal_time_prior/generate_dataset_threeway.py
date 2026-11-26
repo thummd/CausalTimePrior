@@ -31,6 +31,7 @@ import networkx as nx
 from typing import List, Tuple
 
 from causal_time_prior.prior import CausalTimePrior
+from causal_time_prior.data_checks import generate_checked_pair
 from causal_time_prior.interventions import InterventionSpec
 
 
@@ -179,13 +180,30 @@ def generate_dataset_threeway(
     max_nodes: int,
     seed: int = 42,
     output_path: str = "data/test_set_threeway_1k.pt",
+    regime_switching_prob: float = 0.15,
 ):
-    """Generate dataset with three-way query labels.
-    
+    """Generate a dataset with three-way query labels and save it to disk.
+
     Query types:
     - 0: Intervened (query_target == intervention_target)
     - 1: Downstream (query_target reachable from intervention_target)
     - 2: Non-causal (query_target NOT reachable)
+
+    Args:
+        n_scms: Number of SCMs to generate.
+        T: Length of each time series.
+        max_nodes: Number of variables after zero padding.
+        seed: Seed for the prior, numpy, and the global torch state.
+        output_path: Destination of the saved dataset.
+        regime_switching_prob: Share of regime-switching SCMs in the prior. The test
+            set behind the TSALM 2026 results was generated before that family
+            existed, so 0.0 reproduces it and the default matches the training prior.
+
+    Returns:
+        None. The dataset dictionary is written to ``output_path``.
+
+    Raises:
+        RuntimeError: If simulations keep failing, see ``generate_checked_pair``.
     """
     print("=" * 80)
     print(f"Generating Three-Way Evaluation Dataset: {n_scms} SCMs, T={T}")
@@ -193,7 +211,7 @@ def generate_dataset_threeway(
     
     # Initialize prior
     print("\n1. Initializing CausalTimePrior...")
-    prior = CausalTimePrior(seed=seed, chain_prob=0.15)
+    prior = CausalTimePrior(seed=seed, chain_prob=0.15, regime_switching_prob=regime_switching_prob)
     np.random.seed(seed)
     torch.manual_seed(seed)
     
@@ -217,12 +235,10 @@ def generate_dataset_threeway(
     
     print(f"\n2. Generating {n_scms} SCM pairs with three-way queries...")
     for i in range(n_scms):
-        X_obs, X_int, intervention, scm = prior.generate_pair(T=T)
-        
-        # Check for divergence
-        if torch.isnan(X_obs).any() or torch.isnan(X_int).any():
-            diverged_count += 1
-            X_obs, X_int, intervention, scm = prior.generate_pair(T=T)
+        # A failed simulation comes back as an all-zero series, which looks like
+        # valid data to every later stage. Reject it here and count it.
+        X_obs, X_int, intervention, scm, n_rejected = generate_checked_pair(prior, T)
+        diverged_count += n_rejected
         
         # Pad to max_nodes
         N = X_obs.shape[1]
@@ -325,6 +341,7 @@ def generate_dataset_threeway(
             'T': T,
             'max_nodes': max_nodes,
             'seed': seed,
+            'regime_switching_prob': regime_switching_prob,
         }
     }
     
@@ -363,6 +380,8 @@ if __name__ == "__main__":
     parser.add_argument('--max_nodes', type=int, default=10, help='Max nodes')
     parser.add_argument('--seed', type=int, default=99, help='Random seed')
     parser.add_argument('--output', type=str, default='data/test_set_threeway_1k.pt')
+    parser.add_argument('--regime_switching_prob', type=float, default=0.15,
+                        help='Share of regime-switching SCMs. Use 0.0 to regenerate the TSALM 2026 test set.')
     
     args = parser.parse_args()
     
@@ -372,4 +391,5 @@ if __name__ == "__main__":
         max_nodes=args.max_nodes,
         seed=args.seed,
         output_path=args.output,
+        regime_switching_prob=args.regime_switching_prob,
     )

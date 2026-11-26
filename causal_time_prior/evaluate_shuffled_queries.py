@@ -63,7 +63,7 @@ def evaluate_shuffled_queries(
     # SHUFFLE query types randomly
     print(f"\n2. Shuffling query type labels...")
     np.random.seed(seed)
-    shuffled_query_types = query_types.numpy().copy()
+    shuffled_query_types = query_types.cpu().numpy().copy()
     np.random.shuffle(shuffled_query_types)
     shuffled_query_types = torch.tensor(shuffled_query_types)
     

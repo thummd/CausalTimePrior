@@ -27,6 +27,7 @@ import numpy as np
 from typing import Dict
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
+from causal_time_prior.data_checks import assert_target_distribution
 
 
 def evaluate_threeway(
@@ -34,7 +35,21 @@ def evaluate_threeway(
     test_path: str,
     device: str = 'cpu',
 ):
-    """Evaluate model on three-way query types."""
+    """Evaluate a checkpoint separately on intervened, downstream, and non-causal queries.
+
+    Args:
+        model_path: Checkpoint written by ``train_v2.py``.
+        test_path: Three-way test set written by ``generate_dataset_threeway.py``.
+        device: Torch device string. Metrics are computed on the CPU in every case.
+
+    Returns:
+        Dictionary that maps each query type to its count, RMSE, MAE, mean prediction,
+        and mean ground truth.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series or contexts
+            without variance in the test set. No prediction is made in that case.
+    """
     
     print("=" * 80)
     print("Three-Way Evaluation: Intervened / Downstream / Non-Causal")
@@ -55,6 +70,10 @@ def evaluate_threeway(
     
     n_samples = X_obs.shape[0]
     print(f"   Test set size: {n_samples}")
+
+    # Step zero for evaluation. Zero-filled test series would lower the target
+    # variance and distort every per-type metric without any change in the model.
+    assert_target_distribution(X_obs, X_int, query_targets, query_times, name="test set")
     
     # Count query types
     n_intervened = (query_types == 0).sum().item()
@@ -118,7 +137,7 @@ def evaluate_threeway(
     ground_truths = np.array(ground_truths)
     
     # Compute metrics by query type
-    query_types_np = query_types.numpy()
+    query_types_np = query_types.cpu().numpy()
     
     results = {}
     for qtype, qname in [(0, 'Intervened'), (1, 'Downstream'), (2, 'Non-causal')]:

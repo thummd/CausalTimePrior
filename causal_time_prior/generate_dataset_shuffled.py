@@ -29,6 +29,7 @@ import numpy as np
 import time
 
 from causal_time_prior.prior import CausalTimePrior
+from causal_time_prior.data_checks import generate_checked_pair
 
 
 def pad_to_max_nodes(X: torch.Tensor, max_nodes: int) -> torch.Tensor:
@@ -83,12 +84,10 @@ def generate_dataset_shuffled(
     
     print(f"\n2. Generating {n_scms} SCM pairs with SHUFFLED query types...")
     for i in range(n_scms):
-        X_obs, X_int, intervention, scm = prior.generate_pair(T=T)
-        
-        # Check for divergence
-        if torch.isnan(X_obs).any() or torch.isnan(X_int).any():
-            diverged_count += 1
-            X_obs, X_int, intervention, scm = prior.generate_pair(T=T)
+        # A failed simulation comes back as an all-zero series, which looks like
+        # valid data to every later stage. Reject it here and count it.
+        X_obs, X_int, intervention, scm, n_rejected = generate_checked_pair(prior, T)
+        diverged_count += n_rejected
         
         # Pad to max_nodes
         N = X_obs.shape[1]
