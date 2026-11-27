@@ -88,7 +88,11 @@ def evaluate_model_downstream(
             query_time = query_times[i:i+1].to(device)
             
             mean_pred, _ = model(X_obs_norm, int_target, int_time, int_value, query_target, query_time)
-            pred = mean_pred.item()
+            # The model is trained on targets that are normalised with the statistics of
+            # the context, so its output is in normalised units. The ground truth below is
+            # in raw units. Without this step the two were compared across units, and the
+            # reported error was that of a predictor that always answers about zero.
+            pred = mean_pred.item() * std.item() + mean.item()
             
             # Ground truth
             truth = X_int[i, query_times[i], query_targets[i]].item()
