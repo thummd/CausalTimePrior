@@ -83,6 +83,32 @@ Expected output:
 
 On a GPU (`--device cuda`) the last printed digit can differ, for example an overall RMSE of 216.86.
 
+### Comparing with Baselines
+
+The baseline table of the paper scores every method on the test queries of Table 2.
+
+```bash
+pip install tigramite    # only needed for the PCMCI+ row
+
+python causal_time_prior/evaluate_baselines_threeway.py \
+    --model artifacts/simple_causal_pfn_v2_full_100k.pt \
+    --test artifacts/test_set_threeway_1k.pt
+```
+
+Expected output:
+
+| Method | RMSE | MAE | Effect Dir. Acc. | Effect Size Corr. |
+|---|---|---|---|---|
+| PCMCI+ | 174.98 | 34.36 | 77.5% | 0.749 |
+| SimpleCausalPFN | 216.87 | 81.68 | 73.4% | 0.625 |
+| Constant zero | 222.25 | 53.26 | 67.7% | 0.701 |
+| Mean prediction | 227.76 | 60.83 | 62.0% | 0.274 |
+| VAR-OLS | 253.72 | 70.31 | 55.0% | 0.177 |
+
+The effect of an intervention on a queried value is its interventional value minus its observational value. Effect direction accuracy is the share of nonzero effects whose sign is predicted correctly. Effect size correlation is the Pearson correlation between predicted and true effects. VAR-OLS predictions are clipped to the data range [-1000, 1000]. Pass `--skip_pcmci` to leave out the PCMCI+ row, which was computed with tigramite 5.2.10.1.
+
+The published paper shows a different baseline table. Its rows came from `evaluate_fair.py` on another test set, where the query is the intervened cell itself. That script compared predictions in normalised units with ground truth in raw units, and its VAR-OLS row returned the intervention value without using a fitted model. The script now reports raw units and says so in its output. The same evaluation supplied the effect direction accuracy and effect size correlation of the main model in the ablation and out-of-distribution tables, which should read 73.4% and 0.625.
+
 ### Regenerating the Data and Retraining
 
 ```bash
