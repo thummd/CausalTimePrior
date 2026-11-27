@@ -30,6 +30,16 @@ from causal_time_prior.simple_causal_pfn import SimpleCausalPFN
 from causal_time_prior.baselines import VARBaseline, MeanBaseline, OracleBaseline
 from causal_time_prior.data_checks import assert_dataset_target_distribution
 
+# In the first dataset format the query is the intervened cell itself. Any method that
+# applies a hard intervention answers with the intervention value there, and
+# VARBaseline.predict_interventional does exactly that without using its fitted model.
+# The note keeps a reader of the table from taking the row for a forecast.
+VAR_OLS_NOTE = (
+    "Note: the query of this protocol is the intervened cell itself. The VAR-OLS row "
+    "returns the intervention value and uses no fitted model. "
+    "evaluate_baselines_threeway.py compares fitted baselines on later and other cells."
+)
+
 
 def evaluate_model_fair(
     model_path: str,
@@ -82,7 +92,11 @@ def evaluate_model_fair(
             
             # Predict
             mean_pred, std_pred = model(X_obs_norm, target, int_time, int_value)
-            pred = mean_pred.item()
+            # The model is trained on targets that are normalised with the statistics of
+            # the context, so its output is in normalised units. The ground truth below is
+            # in raw units. Without this step the two were compared across units, and the
+            # reported error was that of a predictor that always answers about zero.
+            pred = mean_pred.item() * std.item() + mean.item()
             
             # Get ground truth
             truth = X_int[i, intervention_times[i], targets[i]].item()
@@ -287,6 +301,7 @@ def main(test_path: str = 'data/test_set_1k.pt'):
               f"{metrics['effect_direction_acc']:<18.1%} {metrics['effect_size_corr']:<18.3f}")
     
     print("=" * 80)
+    print(VAR_OLS_NOTE)
     
     # Save results
     results_path = 'results/fair_evaluation.txt'
@@ -300,6 +315,7 @@ def main(test_path: str = 'data/test_set_1k.pt'):
         for method, metrics in sorted_results:
             f.write(f"{method:<30} {metrics['rmse']:<12.4f} {metrics['mae']:<12.4f} "
                    f"{metrics['effect_direction_acc']:<18.1%} {metrics['effect_size_corr']:<18.3f}\n")
+        f.write("\n" + VAR_OLS_NOTE + "\n")
     
     print(f"\nResults saved to: {results_path}")
     

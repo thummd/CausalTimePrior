@@ -101,7 +101,11 @@ def evaluate_model(
             
             # Predict
             mean_pred, std_pred = model(X_obs, target, int_time, int_value)
-            pred = mean_pred.item()
+            # The model is trained on targets that are normalised with the statistics of
+            # the context, so its output is in normalised units. The ground truth below is
+            # in raw units. Without this step the two were compared across units, and the
+            # reported error was that of a predictor that always answers about zero.
+            pred = mean_pred.item() * std.item() + mean.item()
             
             # Get ground truth
             truth = X_int_test[i, intervention_times_test[i], targets_test[i]].item()

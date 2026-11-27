@@ -26,6 +26,16 @@ from causal_time_prior.simple_causal_pfn import SimpleCausalPFN
 from causal_time_prior.baselines import VARBaseline, MeanBaseline, OracleBaseline, evaluate_baseline
 from causal_time_prior.data_checks import assert_dataset_target_distribution
 
+# In the first dataset format the query is the intervened cell itself. Any method that
+# applies a hard intervention answers with the intervention value there, and
+# VARBaseline.predict_interventional does exactly that without using its fitted model.
+# The note keeps a reader of the table from taking the row for a forecast.
+VAR_OLS_NOTE = (
+    "Note: the query of this protocol is the intervened cell itself. The VAR-OLS row "
+    "returns the intervention value and uses no fitted model. "
+    "evaluate_baselines_threeway.py compares fitted baselines on later and other cells."
+)
+
 
 def evaluate_simple_causal_pfn(
     model,
@@ -64,6 +74,12 @@ def evaluate_simple_causal_pfn(
             # Predict
             mean, std = model(X_obs, target, int_time, int_value)
             pred = mean.item()
+            if normalize:
+                # The model is trained on targets that are normalised with the statistics of
+                # the context, so its output is in normalised units. The ground truth below is
+                # in raw units. Without this step the two were compared across units, and the
+                # reported error was that of a predictor that always answers about zero.
+                pred = pred * std_val.item() + mean_val.item()
             
             # Get ground truth
             truth = X_int_list[i][intervention_times_list[i], targets_list[i]]
@@ -216,6 +232,7 @@ def main(
         print(f"{method:<20} {metrics['RMSE']:<15.4f} {metrics['MAE']:<15.4f}")
     
     print("=" * 80)
+    print(VAR_OLS_NOTE)
     
     # Save results
     results_path = "results/baseline_comparison.txt"
@@ -230,6 +247,7 @@ def main(
         f.write("-" * 50 + "\n")
         for method, metrics in sorted_results:
             f.write(f"{method:<20} {metrics['RMSE']:<15.4f} {metrics['MAE']:<15.4f}\n")
+        f.write("\n" + VAR_OLS_NOTE + "\n")
     
     print(f"\nResults saved to: {results_path}")
 
