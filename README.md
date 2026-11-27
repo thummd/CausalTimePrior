@@ -81,6 +81,8 @@ Expected output:
 | Non-causal | 157 | 143.15 | 0.66 | 0.46 |
 | Overall | 1000 | 216.87 | 0.99 | 0.85 |
 
+On a GPU (`--device cuda`) the last printed digit can differ, for example an overall RMSE of 216.86.
+
 ### Regenerating the Data and Retraining
 
 ```bash
