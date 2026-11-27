@@ -106,10 +106,10 @@ The original runs used Python 3.12, PyTorch 2.10.0, NumPy 2.4.2, and NetworkX 3.
 
 What to expect:
 
-- **Data generation is deterministic.** In the environment above, the test-set command reproduces the released test set bit for bit. The training-set command reproduces the first 5,000 samples of our stored training set bit for bit. We did not compare the remaining samples.
+- **Data generation is deterministic.** With PyTorch 2.10.0 and NumPy 2.4.2, the test-set command reproduces the released test set bit for bit. The training-set command reproduces the first 5,000 samples of our stored training set bit for bit. We did not compare the remaining samples.
 - **Training is not seeded.** Retraining does not return the released weights. In four reruns on the stored training set, two with hidden size 64 and two with 128, the overall NMSE on the released test set ranged from 0.77 to 1.06. The ordering of NMSE across query types was the same in every run. The Pred/GT column varies more. The non-causal ratio was 0.72 to 0.90 in the reruns, against 0.46 in the paper, so read that column as a single-run point estimate.
 - **Saturated systems dominate the metrics.** Simulated values are clipped to [-1000, 1000] and the trajectory is kept. About 29% of the training SCMs and 33% of the test SCMs reach the clip, and they carry almost all of the summed squared error. The "0% divergence" in the paper means that no NaN or Inf occurs. It does not mean that the dynamics are stable.
-- **Every run starts with a data check.** `train_v2.py`, `evaluate_with_nmse.py`, and `evaluate_threeway.py` print the target statistics per arm and stop if they find zero-filled series or contexts without variance.
+- **Training and evaluation start with a data check.** `train_v2.py`, `evaluate_with_nmse.py`, and `evaluate_threeway.py` print the target statistics per arm and stop if they find zero-filled series or contexts without variance.
 
 ### Which Revision to Use
 
