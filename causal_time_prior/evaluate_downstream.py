@@ -29,6 +29,7 @@ from scipy.stats import pearsonr
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
 from causal_time_prior.baselines import VARBaseline, MeanBaseline, OracleBaseline
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def evaluate_model_downstream(
@@ -218,7 +219,25 @@ def main(
     model_path: str = 'checkpoints/simple_causal_pfn_v2.pt',
     test_path: str = 'data/test_set_downstream_1k.pt',
 ):
-    """Run downstream effects evaluation."""
+    """Evaluate SimpleCausalPFNV2 and VAR-OLS on downstream and same-variable queries.
+
+    A missing test set is generated first with seed 999.
+
+    Args:
+        model_path: Path to a trained SimpleCausalPFNV2 checkpoint.
+        test_path: Path to a test set of the second format with an ``is_downstream``
+            flag.
+
+    Returns:
+        Tuple ``(model_results, var_results)`` with the metrics of the model and of
+        VAR-OLS. The comparison is also written to
+        ``results/downstream_evaluation.txt``.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the test set. Nothing is
+            evaluated in that case.
+    """
     
     print("=" * 80)
     print("Downstream Effects Evaluation")
@@ -246,6 +265,7 @@ def main(
     
     print(f"   Test set size: {n_test} samples")
     print(f"   Downstream queries: {n_downstream}/{n_test} ({100*n_downstream/n_test:.1f}%)")
+    assert_dataset_target_distribution(test_data, name="test set")
     
     # Evaluate SimpleCausalPFNV2
     print("\n2. Evaluating SimpleCausalPFNV2...")

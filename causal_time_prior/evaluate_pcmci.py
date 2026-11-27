@@ -27,6 +27,7 @@ import numpy as np
 import time
 
 from causal_time_prior.pcmci_baseline import PCMCIBaseline
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 def evaluate_pcmci_baseline(
     test_path: str = 'data/test_set_threeway_1k.pt',
@@ -34,18 +35,23 @@ def evaluate_pcmci_baseline(
     tau_max: int = 2,
     alpha_level: float = 0.01,
 ):
-    """Evaluate PCMCI+ baseline on threeway test set.
-    
-    Parameters
-    ----------
-    test_path : str
-        Path to test dataset.
-    n_samples : int
-        Number of samples to evaluate (default 200 for tractability).
-    tau_max : int
-        Maximum lag for PCMCI+.
-    alpha_level : float
-        Significance level for PCMCI+.
+    """Evaluate the PCMCI+ baseline on a random subsample of a three-way test set.
+
+    Args:
+        test_path: Path to a three-way test set.
+        n_samples: Number of samples to evaluate. PCMCI+ runs a causal discovery per
+            sample, so the default of 200 keeps the run tractable.
+        tau_max: Maximum lag for PCMCI+.
+        alpha_level: Significance level for PCMCI+.
+
+    Returns:
+        Dictionary that maps each query type to its metrics.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the subsample. Nothing is evaluated in
+            that case.
+        ImportError: If the tigramite package is not installed.
     """
     
     print("=" * 80)
@@ -82,6 +88,10 @@ def evaluate_pcmci_baseline(
     query_types = query_types[indices]
     
     print(f"   Evaluating on {n_samples}/{total_samples} samples (subsampled)")
+
+    # PCMCI+ is scored on the subsample only, so the statistics are logged for it and
+    # not for the whole file.
+    assert_dataset_target_distribution(dataset, name="test subsample", rows=indices)
     
     # Count query types
     n_intervened = (query_types == 0).sum()

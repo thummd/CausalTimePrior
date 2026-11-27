@@ -41,12 +41,35 @@ SimpleCausalPFNV2 = _pfn_mod.SimpleCausalPFNV2
 _baselines_mod = _load_module('baselines', os.path.join(_dir, 'baselines.py'))
 VARBaseline = _baselines_mod.VARBaseline
 
+_checks_mod = _load_module('data_checks', os.path.join(_dir, 'data_checks.py'))
+assert_dataset_target_distribution = _checks_mod.assert_dataset_target_distribution
+
 
 def find_example(
     model_path: str = 'checkpoints/simple_causal_pfn_v2_full_100k.pt',
     test_path: str = 'data/test_set_threeway_1k.pt',
     device: str = 'cpu',
 ):
+    """Search the non-causal test queries for examples where the PFN beats VAR-OLS.
+
+    The paper shows one such example: the queried variable correlates with the
+    intervened variable in the observational data but does not depend on it.
+
+    Args:
+        model_path: Checkpoint written by ``train_v2.py``.
+        test_path: Three-way test set written by ``generate_dataset_threeway.py``.
+        device: Torch device string for the model.
+
+    Returns:
+        List of dictionaries, one per example in which the PFN has the smaller error
+        and the observational correlation exceeds 0.3 in magnitude. The list is
+        sorted by the error margin over VAR-OLS, largest first.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the test set. No example is searched in
+            that case.
+    """
     # Load dataset
     dataset = torch.load(test_path, map_location=device)
     X_obs = dataset['X_obs']
@@ -58,6 +81,8 @@ def find_example(
     query_times = dataset['query_times']
     query_types = dataset['query_types']
     num_vars = dataset['num_vars']
+
+    assert_dataset_target_distribution(dataset, name="test set")
 
     # Load model
     checkpoint = torch.load(model_path, map_location=device)

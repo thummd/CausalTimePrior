@@ -23,6 +23,7 @@ import numpy as np
 from typing import Dict, Tuple
 
 from causal_time_prior.simple_causal_pfn import SimpleCausalPFN
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def evaluate_model(
@@ -31,12 +32,21 @@ def evaluate_model(
     n_test: int = 1000,
     device: str = 'cpu',
 ) -> Tuple[float, float]:
-    """Evaluate a single model on test set.
-    
-    Returns
-    -------
-    Tuple[float, float]
-        (RMSE, MAE)
+    """Evaluate one SimpleCausalPFN checkpoint on the last samples of a dataset.
+
+    Args:
+        model_path: Path to a trained SimpleCausalPFN checkpoint.
+        dataset_path: Path to a dataset of the first format.
+        n_test: Number of samples to evaluate on, taken from the end of the dataset.
+        device: Device for model inference.
+
+    Returns:
+        Tuple ``(rmse, mae)`` over the evaluated samples.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the evaluated samples. Nothing is
+            evaluated in that case.
     """
     # Load dataset
     dataset = torch.load(dataset_path)
@@ -52,6 +62,13 @@ def evaluate_model(
     targets_test = targets[-n_test:]
     intervention_times_test = intervention_times[-n_test:]
     intervention_values_test = intervention_values[-n_test:]
+
+    # The model is scored on these samples only, so the statistics are logged for them
+    # and not for the whole file.
+    n_total = X_obs.shape[0]
+    assert_dataset_target_distribution(
+        dataset, name="test samples", rows=slice(max(n_total - n_test, 0), n_total)
+    )
     
     # Load model
     checkpoint = torch.load(model_path, map_location=device)

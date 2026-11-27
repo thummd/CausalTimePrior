@@ -24,6 +24,7 @@ from torch.utils.data import TensorDataset, DataLoader
 import time
 
 from causal_time_prior.simple_causal_pfn import SimpleCausalPFN
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def train_epoch(model, dataloader, optimizer, device, normalize=True):
@@ -111,28 +112,29 @@ def main(
     device: str = "cpu",
     save_path: str = "checkpoints/simple_causal_pfn.pt",
 ):
-    """Train SimpleCausalPFN.
-    
-    Parameters
-    ----------
-    data_path : str
-        Path to the dataset file.
-    hidden_dim : int
-        Hidden dimension for GRU.
-    num_layers : int
-        Number of GRU layers.
-    batch_size : int
-        Batch size for training.
-    num_epochs : int
-        Number of training epochs.
-    lr : float
-        Learning rate.
-    train_split : float
-        Fraction of data to use for training.
-    device : str
-        Device to train on.
-    save_path : str
-        Path to save the trained model.
+    """Train SimpleCausalPFN on a dataset of the first format.
+
+    The model predicts the intervened variable at the intervention time. Both splits
+    pass the step-zero data check before the first batch.
+
+    Args:
+        data_path: Path to the dataset file.
+        hidden_dim: Hidden dimension of the GRU.
+        num_layers: Number of GRU layers.
+        batch_size: Batch size for training.
+        num_epochs: Number of training epochs.
+        lr: Learning rate.
+        train_split: Fraction of the data used for training. The rest is the test split.
+        device: Device to train on.
+        save_path: Path of the checkpoint with the best test RMSE.
+
+    Returns:
+        None. The best checkpoint is written to ``save_path``.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in either split. No training step runs in
+            that case.
     """
     print("=" * 80)
     print("Training SimpleCausalPFN")
@@ -170,7 +172,13 @@ def main(
     intervention_values_test = intervention_values[n_train:]
     
     print(f"\n2. Train/test split: {n_train}/{n_samples - n_train}")
-    
+
+    # train_epoch and evaluate divide every sample by the standard deviation of its
+    # context plus 1e-8. A zero-filled context would scale its target by 1e8, so both
+    # splits are checked before the first batch is drawn.
+    assert_dataset_target_distribution(dataset, name="train split", rows=slice(0, n_train))
+    assert_dataset_target_distribution(dataset, name="test split", rows=slice(n_train, n_samples))
+
     # Create dataloaders
     train_dataset = TensorDataset(
         X_obs_train, X_int_train, targets_train, 

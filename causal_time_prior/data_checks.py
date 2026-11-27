@@ -22,10 +22,12 @@ and silently destroys the run.
 
 Two layers guard against this. ``generate_checked_pair`` rejects a failed simulation
 while a dataset is generated. ``assert_target_distribution`` logs and asserts the
-target statistics before the first training or evaluation step.
+target statistics before the first training or evaluation step. Scripts that work on
+a stored dataset file call it through ``assert_dataset_target_distribution``, which
+knows both dataset formats.
 """
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import torch
 
@@ -47,6 +49,25 @@ MIN_CONTEXT_STD = 1e-6
 # zero context paired with a nonzero target gives 1e8 or more, so 1e6 separates the
 # two cases with two orders of magnitude to spare on either side.
 MAX_ABS_NORMALISED_TARGET = 1e6
+
+
+class StepZeroCheckError(ValueError):
+    """Error raised when data fails the step-zero check.
+
+    It is a ``ValueError``, so code that catches ``ValueError`` keeps working. The
+    dedicated type exists for callers that swallow ordinary errors, such as a driver
+    that runs several experiments in sequence. Such a caller can let this error
+    through, because corrupted data must stop the run.
+
+    Args:
+        *args: The message that names the data and every failed condition.
+
+    Returns:
+        Nothing. Exceptions are raised, not returned.
+
+    Raises:
+        Nothing by itself.
+    """
 
 
 def is_zero_filled(X: torch.Tensor) -> bool:
@@ -209,10 +230,10 @@ def assert_target_distribution(
         next to a checkpoint or a results table.
 
     Raises:
-        ValueError: If an arm holds NaN or Inf, if any series is zero-filled, if a
-            context has a standard deviation below ``MIN_CONTEXT_STD``, if the targets
-            have no variance, or if a normalised target exceeds
-            ``MAX_ABS_NORMALISED_TARGET``.
+        StepZeroCheckError: If an arm holds NaN or Inf, if any series is zero-filled,
+            if a context has a standard deviation below ``MIN_CONTEXT_STD``, if the
+            targets have no variance, or if a normalised target exceeds
+            ``MAX_ABS_NORMALISED_TARGET``. It is a ``ValueError``.
     """
     stats = target_distribution_stats(X_obs, X_int, query_targets, query_times)
     has_queries = "int_target_variance" in stats
@@ -256,7 +277,7 @@ def assert_target_distribution(
             )
 
     if problems:
-        raise ValueError(
+        raise StepZeroCheckError(
             f"Step-zero check failed for the {name}: " + "; ".join(problems) + ". "
             "Regenerate the data with the current simulator. Datasets generated with "
             "commits 0208a29 to ad9f0a4 contain zero-filled series and must not be used."
@@ -264,3 +285,60 @@ def assert_target_distribution(
 
     print("     Step-zero check passed.")
     return stats
+
+
+def assert_dataset_target_distribution(
+    dataset: Dict[str, Any],
+    name: str = "dataset",
+    rows: Optional[Union[slice, Sequence[int], torch.Tensor]] = None,
+) -> Dict[str, float]:
+    """Run the step-zero check on a stored dataset of either format.
+
+    The stored datasets come in two formats. The newer one names the queried cell
+    with ``query_targets`` and ``query_times``. The older one has no separate query.
+    Its models predict the intervened variable at the intervention time, so the cell
+    is given by ``targets`` and ``intervention_times``. Resolving the format here
+    keeps that knowledge in one place instead of in every training and evaluation
+    script.
+
+    Args:
+        dataset: Dictionary as written by one of the ``generate_dataset*.py`` scripts
+            and returned by ``torch.load``.
+        name: Label of the data in the log, for example ``"test set"``.
+        rows: Samples that the caller is going to use, as a slice, a sequence of
+            indices, or an index tensor. None checks every sample. A script that
+            trains or evaluates on a part of a file passes that part, so the logged
+            statistics describe the data of the run.
+
+    Returns:
+        The statistics from ``target_distribution_stats`` for the selected samples.
+
+    Raises:
+        KeyError: If the dictionary lacks an arm or names no query cell in either
+            format.
+        StepZeroCheckError: If no sample is selected, or if the selected samples fail
+            the check as described in ``assert_target_distribution``. It is a
+            ``ValueError``.
+    """
+    if "query_targets" in dataset and "query_times" in dataset:
+        targets, times = dataset["query_targets"], dataset["query_times"]
+    elif "targets" in dataset and "intervention_times" in dataset:
+        targets, times = dataset["targets"], dataset["intervention_times"]
+    else:
+        raise KeyError(
+            "The dataset names no query cell. Expected 'query_targets' and 'query_times', "
+            f"or 'targets' and 'intervention_times'. Found: {sorted(dataset)}."
+        )
+
+    X_obs, X_int = dataset["X_obs"], dataset["X_int"]
+    if rows is not None:
+        if not isinstance(rows, slice):
+            # Evaluators load their test set straight onto the GPU, and a tensor on the
+            # GPU can only be indexed by an index on the same device.
+            rows = torch.as_tensor(rows, dtype=torch.long, device=X_obs.device)
+        X_obs, X_int, targets, times = X_obs[rows], X_int[rows], targets[rows], times[rows]
+
+    if X_obs.shape[0] == 0:
+        raise StepZeroCheckError(f"Step-zero check failed for the {name}: no sample is selected.")
+
+    return assert_target_distribution(X_obs, X_int, targets, times, name=name)
