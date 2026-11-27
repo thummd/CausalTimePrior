@@ -29,6 +29,7 @@ from typing import Dict, List
 from causal_time_prior.simple_causal_pfn import SimpleCausalPFN
 from causal_time_prior.baselines import evaluate_baseline
 from causal_time_prior.train_simple_pfn import main as train_model
+from causal_time_prior.data_checks import StepZeroCheckError
 
 
 def filter_dataset_by_intervention_type(
@@ -206,12 +207,21 @@ def run_dataset_size_ablation():
 
 
 def main(ablation_type: str = 'all'):
-    """Run ablation studies.
-    
-    Parameters
-    ----------
-    ablation_type : str
-        Which ablation to run: 'intervention_type', 'dataset_size', or 'all'.
+    """Run the ablation studies.
+
+    Each study trains its models through ``train_simple_pfn.main``, which checks the
+    data at step zero. An ordinary failure of one study is printed and the next study
+    still runs. A failed data check is passed on and stops everything.
+
+    Args:
+        ablation_type: Which study to run: ``'intervention_type'``, ``'dataset_size'``,
+            or ``'all'``.
+
+    Returns:
+        Dictionary that maps each completed study to the checkpoints it trained.
+
+    Raises:
+        StepZeroCheckError: If the data of any training run fails the step-zero check.
     """
     print("=" * 80)
     print("CausalTimePrior Ablation Studies")
@@ -222,12 +232,19 @@ def main(ablation_type: str = 'all'):
     if ablation_type in ['intervention_type', 'all']:
         try:
             results['intervention_type'] = run_intervention_type_ablation()
+        except StepZeroCheckError:
+            # Corrupted data must stop the whole study. Carrying on would leave an
+            # older checkpoint in place, and a later evaluation could not tell it from
+            # a new one.
+            raise
         except Exception as e:
             print(f"Intervention type ablation failed: {e}")
     
     if ablation_type in ['dataset_size', 'all']:
         try:
             results['dataset_size'] = run_dataset_size_ablation()
+        except StepZeroCheckError:
+            raise
         except Exception as e:
             print(f"Dataset size ablation failed: {e}")
     

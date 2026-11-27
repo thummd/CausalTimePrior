@@ -24,6 +24,7 @@ from typing import Dict
 
 from causal_time_prior.simple_causal_pfn import SimpleCausalPFN
 from causal_time_prior.baselines import VARBaseline, MeanBaseline, OracleBaseline, evaluate_baseline
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def evaluate_simple_causal_pfn(
@@ -86,18 +87,22 @@ def main(
     n_test: int = 1000,
     device: str = "cpu",
 ):
-    """Run evaluation of all methods.
-    
-    Parameters
-    ----------
-    data_path : str
-        Path to dataset.
-    model_path : str
-        Path to trained SimpleCausalPFN checkpoint.
-    n_test : int
-        Number of test samples to evaluate on.
-    device : str
-        Device for model inference.
+    """Evaluate the baselines and SimpleCausalPFN on the last samples of a dataset.
+
+    Args:
+        data_path: Path to a dataset of the first format.
+        model_path: Path to a trained SimpleCausalPFN checkpoint.
+        n_test: Number of samples to evaluate on, taken from the end of the dataset.
+        device: Device for model inference.
+
+    Returns:
+        None. The comparison is printed and written to
+        ``results/baseline_comparison.txt``.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the evaluated samples. Nothing is
+            evaluated in that case.
     """
     print("=" * 80)
     print("Baseline Evaluation for CausalTimePrior")
@@ -126,6 +131,10 @@ def main(
     intervention_values_test = intervention_values[-n_test:]
     
     print(f"   Using last {n_test} samples for evaluation")
+
+    # Every method is scored on these samples only, so the statistics are logged for
+    # them and not for the whole file.
+    assert_dataset_target_distribution(dataset, name="test samples", rows=slice(n_total - n_test, n_total))
     
     # Convert to lists of numpy arrays
     X_obs_list = [X_obs_test[i].numpy() for i in range(n_test)]

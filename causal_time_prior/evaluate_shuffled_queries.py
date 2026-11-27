@@ -30,6 +30,7 @@ import numpy as np
 from typing import Dict
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def evaluate_shuffled_queries(
@@ -38,7 +39,25 @@ def evaluate_shuffled_queries(
     device: str = 'cpu',
     seed: int = 42,
 ):
-    """Evaluate model on three-way query types with SHUFFLED labels."""
+    """Evaluate a checkpoint on three-way queries after shuffling the query type labels.
+
+    Shuffling the labels is the control experiment. Differences between the groups
+    that survive it cannot come from the query types.
+
+    Args:
+        model_path: Checkpoint written by ``train_v2.py``.
+        test_path: Three-way test set written by ``generate_dataset_threeway.py``.
+        device: Torch device string. Metrics are computed on the CPU in every case.
+        seed: Seed of the label shuffle.
+
+    Returns:
+        Dictionary that maps each shuffled group to its metrics.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the test set. Nothing is
+            evaluated in that case.
+    """
     
     print("=" * 80)
     print("Shuffled Query Evaluation (Control Experiment)")
@@ -59,6 +78,7 @@ def evaluate_shuffled_queries(
     
     n_samples = X_obs.shape[0]
     print(f"   Test set size: {n_samples}")
+    assert_dataset_target_distribution(dataset, name="test set")
     
     # SHUFFLE query types randomly
     print(f"\n2. Shuffling query type labels...")

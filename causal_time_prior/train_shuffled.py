@@ -25,6 +25,7 @@ import numpy as np
 import time
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def train_on_shuffled_data(
@@ -35,8 +36,28 @@ def train_on_shuffled_data(
     lr: float = 1e-4,
     device: str = 'cpu',
 ):
-    """Train SimpleCausalPFNV2 on shuffled data."""
-    
+    """Train SimpleCausalPFNV2 on the shuffled control dataset.
+
+    The first 90% of the samples are the training split and the rest is the
+    validation split. Both pass the step-zero data check before the first batch.
+
+    Args:
+        train_path: Path to the shuffled dataset.
+        checkpoint_path: Path of the checkpoint with the best validation loss.
+        num_epochs: Number of training epochs.
+        batch_size: Batch size for training.
+        lr: Learning rate.
+        device: Device to train on. The dataset is loaded onto it.
+
+    Returns:
+        None. The best checkpoint is written to ``checkpoint_path``.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in either split. No training step runs in
+            that case.
+    """
+
     print("=" * 80)
     print("Training SimpleCausalPFN on SHUFFLED Data (Control)")
     print("=" * 80)
@@ -68,7 +89,13 @@ def train_on_shuffled_data(
     
     print(f"   Train samples: {n_train}")
     print(f"   Val samples: {n_samples - n_train}")
-    
+
+    # The loop below divides every sample by the standard deviation of its context
+    # plus 1e-8. A zero-filled context would scale its target by 1e8, so both splits
+    # are checked before the first batch is drawn.
+    assert_dataset_target_distribution(dataset, name="train split", rows=slice(0, n_train))
+    assert_dataset_target_distribution(dataset, name="validation split", rows=slice(n_train, n_samples))
+
     # Create model
     print(f"\n2. Creating SimpleCausalPFNV2 model...")
     model = SimpleCausalPFNV2(

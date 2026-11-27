@@ -28,6 +28,7 @@ from scipy.stats import pearsonr
 
 from causal_time_prior.simple_causal_pfn import SimpleCausalPFN
 from causal_time_prior.baselines import VARBaseline, MeanBaseline, OracleBaseline
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def evaluate_model_fair(
@@ -213,7 +214,21 @@ def evaluate_baseline_fair(
 
 
 def main(test_path: str = 'data/test_set_1k.pt'):
-    """Run fair evaluation on all models and baselines."""
+    """Evaluate all SimpleCausalPFN checkpoints and baselines on one shared test set.
+
+    Args:
+        test_path: Path to a test set of the first format.
+
+    Returns:
+        Dictionary that maps each method to its RMSE, MAE, effect direction accuracy,
+        and effect size correlation. The table is also written to
+        ``results/fair_evaluation.txt``.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the test set. Nothing is
+            evaluated in that case.
+    """
     
     print("=" * 80)
     print("Fair Evaluation: All Models on Same Test Set")
@@ -224,6 +239,7 @@ def main(test_path: str = 'data/test_set_1k.pt'):
     test_data = torch.load(test_path)
     n_test = test_data['X_obs'].shape[0]
     print(f"   Test set size: {n_test} samples")
+    assert_dataset_target_distribution(test_data, name="test set")
     
     # Models to evaluate
     models = {

@@ -29,6 +29,7 @@ import torch
 import numpy as np
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
+from causal_time_prior.data_checks import assert_dataset_target_distribution
 
 
 def evaluate_shuffled(
@@ -37,7 +38,26 @@ def evaluate_shuffled(
     device: str = 'cpu',
     seed: int = 42,
 ):
-    """Evaluate model with shuffled intervention targets as control."""
+    """Evaluate a checkpoint with real and with shuffled intervention targets.
+
+    Shuffling the intervention targets across samples is the control experiment. A
+    model that uses the intervention should lose its pattern across query types.
+
+    Args:
+        model_path: Checkpoint written by ``train_v2.py``.
+        test_path: Three-way test set written by ``generate_dataset_threeway.py``.
+        device: Torch device string. Metrics are computed on the CPU in every case.
+        seed: Seed of the permutation that shuffles the intervention targets.
+
+    Returns:
+        Dictionary with the Pred/GT ratios per query type under real and shuffled
+        targets and with the spread of each.
+
+    Raises:
+        ValueError: If the step-zero check finds zero-filled series, contexts without
+            variance, or non-finite values in the test set. Nothing is
+            evaluated in that case.
+    """
 
     print("=" * 80)
     print("Shuffled-Intervention Control Experiment")
@@ -57,6 +77,7 @@ def evaluate_shuffled(
     query_types = dataset['query_types']
 
     n_samples = X_obs.shape[0]
+    assert_dataset_target_distribution(dataset, name="test set")
 
     # Shuffle intervention targets
     print(f"\n2. Shuffling intervention targets (seed={seed})...")

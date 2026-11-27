@@ -31,6 +31,7 @@ from typing import Tuple
 
 from causal_time_prior.simple_causal_pfn_v2 import SimpleCausalPFNV2
 from causal_time_prior.baselines import VARBaseline
+from causal_time_prior.data_checks import assert_target_distribution
 
 
 class ThreeVariableChain:
@@ -129,8 +130,27 @@ def evaluate_on_chain(
     n_test: int = 100,
     device: str = 'cpu'
 ):
-    """Evaluate SimpleCausalPFNV2 on the 3-variable chain benchmark."""
-    
+    """Evaluate SimpleCausalPFNV2 on the 3-variable chain benchmark.
+
+    The chain A -> B -> C has known coefficients. The model is asked for A, B, and C
+    two steps after a hard intervention on A, and its mean prediction is compared
+    with the known effect.
+
+    Args:
+        model_path: Checkpoint written by ``train_v2.py``.
+        n_test: Number of observational and interventional pairs drawn from the chain.
+        device: Torch device string for the model.
+
+    Returns:
+        Dictionary that maps ``"A"``, ``"B"``, and ``"C"`` to the RMSE, the mean
+        prediction, and the mean ground truth of that variable.
+
+    Raises:
+        ValueError: If the step-zero check finds a zero-filled series, a context
+            without variance, or a non-finite value among the drawn pairs. No
+            prediction is made in that case.
+    """
+
     print("=" * 80)
     print("3-Variable Chain Benchmark: A→B→C")
     print("=" * 80)
@@ -166,7 +186,26 @@ def evaluate_on_chain(
     
     # Evaluate
     print(f"\n3. Evaluating on {n_test} samples...")
-    
+
+    # All pairs are drawn before the first prediction, so that the step-zero check
+    # sees exactly the data that is evaluated. The chain owns its random generator and
+    # the model draws nothing from it. The pairs are therefore the same as when each
+    # one was drawn inside the loop.
+    pairs = []
+    for _ in range(n_test):
+        X_obs = chain.sample_observational(T=50)
+        X_int = chain.sample_interventional(T=50, intervention_time=25, intervention_value=5.0)
+        pairs.append((X_obs, X_int))
+
+    X_obs_all = torch.zeros(n_test, 50, 10)
+    X_int_all = torch.zeros(n_test, 50, 10)
+    X_obs_all[:, :, :3] = torch.tensor(np.stack([obs for obs, _ in pairs]), dtype=torch.float32)
+    X_int_all[:, :, :3] = torch.tensor(np.stack([int_ for _, int_ in pairs]), dtype=torch.float32)
+    # Arm level only. The benchmark queries three variables per sample, and the value
+    # of the intervened variable A is the constant 5.0 by construction. An assertion
+    # on the variance of the queried values would reject that valid design.
+    assert_target_distribution(X_obs_all, X_int_all, name="chain benchmark")
+
     predictions_A = []
     predictions_B = []
     predictions_C = []
@@ -176,10 +215,8 @@ def evaluate_on_chain(
     
     with torch.no_grad():
         for i in range(n_test):
-            # Generate data
-            X_obs = chain.sample_observational(T=50)
-            X_int = chain.sample_interventional(T=50, intervention_time=25, intervention_value=5.0)
-            
+            X_obs, X_int = pairs[i]
+
             # Pad to 10 variables
             X_obs_padded = np.zeros((50, 10))
             X_obs_padded[:, :3] = X_obs
